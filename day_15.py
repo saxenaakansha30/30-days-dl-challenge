@@ -7,6 +7,8 @@ import tensorflow as tf
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import MinMaxScaler
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import SimpleRNN, Dense
 
 
 # Load the Jena Climate Dataset
@@ -83,4 +85,65 @@ validation_dataset = validation_dataset.cache().shuffle(BUFFER_SIZE).batch(BATCH
 test_dataset = tf.data.Dataset.from_tensor_slices((X_test, y_test))
 test_dataset = test_dataset.cache().shuffle(BUFFER_SIZE).batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
 
-print(train_dataset)
+# Define the RNN model
+model = Sequential()
+model.add(
+    SimpleRNN(
+        units=50,
+        activation='tanh',
+        input_shape=(X_train.shape[1], 1)
+    )
+)
+
+model.add(Dense(1))
+
+model.summary()
+
+# Compile the model
+model.compile(
+    optimizer='adam',
+    loss='mse',
+    metrics=['mae']
+)
+
+# Train the model
+history = model.fit(
+    train_dataset,
+    validation_data=validation_dataset,
+    epochs=10,
+    verbose=1
+)
+
+# Evaluate the model
+loss, mae = model.evaluate(test_dataset)
+print(f"The loss value on test dataset: {loss}")
+print(f"The Mean Absolute Error on test dataset: {mae}")
+
+
+# Visualize the loss
+plt.figure(figsize=(10, 6))
+plt.plot(history.history['loss'], label='Training Loss[MSE]')
+plt.plot(history.history['val_loss'], label='Validation Loss[MSE]')
+plt.xlabel('Epochs')
+plt.ylabel('Loss[Mean Squared Error]')
+plt.title('Training and Validation Loss')
+plt.legend()
+plt.show()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

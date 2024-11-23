@@ -3,17 +3,18 @@
 
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras.layers import Dense, Flatten, Reshape, LeakyReLU, BatchNormalization
+from tensorflow.keras.layers import Dense, Flatten, Reshape, LeakyReLU, BatchNormalization, Conv2DTranspose, Conv2D
 from tensorflow.keras.models import Sequential
 import matplotlib.pyplot as plt
 from tensorflow.keras.datasets import fashion_mnist
 import pandas as pd
 import os
+from tensorflow.keras.optimizers import Adam
 
 # Load the data
 (X_train, _), (_, _) = fashion_mnist.load_data()
 
-# X_train_flat = X_train.reshape(-1, 28*28)
+# X_train_flat = X_train.reshape(-1, 28*28)_
 # df = pd.DataFrame(X_train_flat)
 
 #Normalize between -1 and 1 as it helps tanh activation function.
@@ -42,7 +43,30 @@ def build_generator():
 
     return  model
 
-generator = build_generator()
+def build_improved_generator():
+    model = Sequential()
+
+    model.add(Dense(7 * 7 * 256, input_dim=100))
+    model.add(LeakyReLU(alpha=0.2))
+    model.add(Reshape((7, 7, 256)))
+
+    # Upsampling to 14x14
+    model.add(Conv2DTranspose(128, kernel_size=4, strides=2, padding='same'))
+    model.add(LeakyReLU(alpha=0.2))
+    model.add(BatchNormalization(momentum=0.8))
+
+    # Upsampling to 28x28
+    model.add(Conv2DTranspose(64, kernel_size=4, strides=2, padding='same'))
+    model.add(LeakyReLU(alpha=0.2))
+    model.add(BatchNormalization(momentum=0.8))
+
+    # Final layer to generate images
+    model.add(Conv2D(1, kernel_size=7, activation='tanh', padding='same'))
+
+    return model
+
+
+generator = build_improved_generator()
 generator.summary()
 
 # Build the discriminator
@@ -67,7 +91,7 @@ discriminator = build_discriminator()
 
 # Compile the model
 discriminator.compile(
-    optimizer='adam',
+    optimizer=Adam(learning_rate=0.0002),
     loss='binary_crossentropy',
     metrics=['accuracy']
 )
@@ -85,20 +109,20 @@ def build_gan(generator, discriminator):
 
 gan = build_gan(generator, discriminator)
 gan.compile(
-    optimizer='adam',
+    optimizer=Adam(learning_rate=0.0001),
     loss='binary_crossentropy'
 )
 
 # Training the GAN
 
 # Training Parameters
-epochs = 10000
-batch_size = 64
+epochs = 30000
+batch_size = 16
 save_intervals = 1000
 
 # Label for real and fake images
-real = np.ones((batch_size, 1))
-fake = np.zeros((batch_size, 1))
+real = np.ones((batch_size, 1)) * 0.9
+fake = np.zeros((batch_size, 1)) + 0.1
 
 for epoch in range(epochs):
 
@@ -109,13 +133,19 @@ for epoch in range(epochs):
     noise = np.random.normal(0, 1, (batch_size, 100))
     generated_images = generator.predict(noise)
 
+    # Random flips to add noise to discriminator
+    if np.random.rand() < 0.1:
+        real, fake = fake, real
+
     d_loss_real = discriminator.train_on_batch(real_images, real)
     d_loss_fake = discriminator.train_on_batch(generated_images, fake)
     d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
 
     # Train the Generator
-    noise = np.random.normal(0, 1, (batch_size, 100))
-    gan_loss = gan.train_on_batch(noise, real)
+    # Train the generator twice to give it more opportunity.
+    for _ in range(2):
+        noise = np.random.normal(0, 1, (batch_size, 100))
+        gan_loss = gan.train_on_batch(noise, real)
 
     if epoch % save_intervals == 0:
         print(f"{epoch} [D loss: {d_loss[0]}, acc.: {100 * d_loss[1]}%] [G loss: {gan_loss}]")
